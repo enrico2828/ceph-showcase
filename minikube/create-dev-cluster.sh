@@ -8,12 +8,15 @@ SCRIPT_ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)
 # Script arguments: new arguments must be added here (following the same format)
 export MINIKUBE_NODES="${MINIKUBE_NODES:=1}" ## Specify the minikube number of nodes to create
 export MINIKUBE_DISK_SIZE="${MINIKUBE_DISK_SIZE:=40g}" ## Specify the minikube disk size
-export MINIKUBE_EXTRA_DISKS="${MINIKUBE_EXTRA_DISKS:=3}" ## Specify the minikube number of extra disks
+export MINIKUBE_EXTRA_DISKS="${MINIKUBE_EXTRA_DISKS:=6}" ## Specify the minikube number of extra disks
+export MINIKUBE_CPUS="${MINIKUBE_CPUS:=4}" ## Specify the minikube number of cpus
+export MINIKUBE_MEMORY="${MINIKUBE_MEMORY:=8G}" ## Specify the minikube memory
 export ROOK_PROFILE_NAME="${ROOK_PROFILE_NAME:=rook}" ## Specify the minikube profile name
 export ROOK_CLUSTER_NS="${ROOK_CLUSTER_NS:=$DEFAULT_NS}" ## CephCluster namespace
 export ROOK_OPERATOR_NS="${ROOK_OPERATOR_NS:=$DEFAULT_NS}" ## Rook operator namespace (if different from CephCluster namespace)
-export ROOK_EXAMPLES_DIR="${ROOK_EXAMPLES_DIR:="$SCRIPT_ROOT"/../../deploy/examples}" ## Path to Rook examples directory (i.e github.com/rook/rook/deploy/examples)
+export ROOK_EXAMPLES_DIR="${ROOK_EXAMPLES_DIR:="$SCRIPT_ROOT"/../../rook/deploy/examples}" ## Path to Rook examples directory (i.e github.com/rook/rook/deploy/examples)
 export ROOK_CLUSTER_SPEC_FILE="${ROOK_CLUSTER_SPEC_FILE:=cluster-test.yaml}" ## CephCluster manifest file
+export ROOK_OBJECTSTORE_SPEC_FILE="${ROOK_OBJECTSTORE_SPEC_FILE:=object-test.yaml}" ## CephCluster manifest file
 
 init_vars(){
     MINIKUBE="minikube --profile $ROOK_PROFILE_NAME"
@@ -21,6 +24,7 @@ init_vars(){
 
     echo "Using '$(realpath "$ROOK_EXAMPLES_DIR")' as examples directory.."
     echo "Using '$ROOK_CLUSTER_SPEC_FILE' as cluster spec file.."
+    echo "Using '$ROOK_OBJECTSTORE_SPEC_FILE' as objectstore spec file.."
     echo "Using '$ROOK_PROFILE_NAME' as minikube profile.."
     echo "Using '$ROOK_CLUSTER_NS' as cluster namespace.."
     echo "Using '$ROOK_OPERATOR_NS' as operator namespace.."
@@ -112,7 +116,7 @@ setup_minikube_env() {
     minikube_driver="$(get_minikube_driver)"
     echo "Setting up minikube env for profile '$ROOK_PROFILE_NAME' (using $minikube_driver driver)"
     $MINIKUBE delete
-    $MINIKUBE start --disk-size="$MINIKUBE_DISK_SIZE" --extra-disks="$MINIKUBE_EXTRA_DISKS" --driver "$minikube_driver" -n "$MINIKUBE_NODES"
+    $MINIKUBE start --disk-size="$MINIKUBE_DISK_SIZE" --extra-disks="$MINIKUBE_EXTRA_DISKS" --driver "$minikube_driver" -n "$MINIKUBE_NODES" --cpus "$MINIKUBE_CPUS" --memory "$MINIKUBE_MEMORY"
     eval "$($MINIKUBE docker-env)"
 }
 
@@ -125,6 +129,7 @@ create_rook_cluster() {
     $KUBECTL apply -f crds.yaml -f common.yaml -f operator.yaml
     $KUBECTL apply -f "$ROOK_CLUSTER_SPEC_FILE" -f toolbox.yaml
     $KUBECTL apply -f dashboard-external-http.yaml
+    $KUBECTL apply -f "$ROOK_OBJECTSTORE_SPEC_FILE"
 }
 
 change_to_examples_dir() {
