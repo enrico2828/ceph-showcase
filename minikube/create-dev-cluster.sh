@@ -19,6 +19,7 @@ export ROOK_OPERATOR_NS="${ROOK_OPERATOR_NS:=$DEFAULT_NS}" ## Rook operator name
 export ROOK_EXAMPLES_DIR="${ROOK_EXAMPLES_DIR:="$SCRIPT_ROOT"/../../rook/deploy/examples}" ## Path to Rook examples directory (i.e github.com/rook/rook/deploy/examples)
 export ROOK_CLUSTER_SPEC_FILE="${ROOK_CLUSTER_SPEC_FILE:=cluster-test.yaml}" ## CephCluster manifest file
 export ROOK_OBJECTSTORE_SPEC_FILE="${ROOK_OBJECTSTORE_SPEC_FILE:=object-test.yaml}" ## CephCluster manifest file
+export MC="${MC:=/usr/local/bin/mc}" ## mc binary for configuring S3
 
 init_vars(){
     MINIKUBE="minikube --profile $ROOK_PROFILE_NAME"
@@ -50,12 +51,28 @@ update_namespaces() {
 
 wait_for_ceph_cluster() {
     echo "Waiting for ceph cluster to enter HEALTH_OK"
-    WAIT_CEPH_CLUSTER_RUNNING=20
+    WAIT_CEPH_CLUSTER_RUNNING=15
     while ! $KUBECTL get cephclusters.ceph.rook.io -n "$ROOK_CLUSTER_NS" -o jsonpath='{.items[?(@.kind == "CephCluster")].status.ceph.health}' | grep -q "HEALTH_OK"; do
 	echo "Waiting for Ceph cluster to enter HEALTH_OK"
 	sleep ${WAIT_CEPH_CLUSTER_RUNNING}
     done
     echo "Ceph cluster installed and running"
+}
+
+wait_for_ceph_objectstore() {
+    echo "Waiting for ceph objectstore to become ready"
+    WAIT_CEPH_CLUSTER_RUNNING=15
+    # wait for objectstore to be ready
+    while ! $KUBECTL get cephobjectstores.ceph.rook.io -n "$ROOK_CLUSTER_NS" -o jsonpath='{.items[?(@.kind == "CephObjectStore")].status.phase}' | grep -q "Ready"; do
+	echo "Waiting for ceph objectstore to become ready"
+	sleep ${WAIT_CEPH_CLUSTER_RUNNING}
+    done
+    # wait for objectstore user to be ready
+    while ! $KUBECTL get cephobjectstoreusers.ceph.rook.io -n "$ROOK_CLUSTER_NS" -o jsonpath='{.items[?(@.kind == "CephObjectStoreUser")].status.phase}' | grep -q "Ready"; do
+	echo "Waiting for ceph objectstore user to become ready"
+	sleep ${WAIT_CEPH_CLUSTER_RUNNING}
+    done
+    echo "Ceph objectstore is ready"
 }
 
 get_minikube_driver() {
@@ -80,6 +97,7 @@ get_minikube_driver() {
 
 show_info() {
     local monitoring_enabled=$1
+    local objectstore_enabled=$2
     DASHBOARD_PASSWORD=$($KUBECTL -n "$ROOK_CLUSTER_NS" get secret rook-ceph-dashboard-password -o jsonpath="{['data']['password']}" | base64 --decode && echo)
     DASHBOARD_END_POINT=$($MINIKUBE service rook-ceph-mgr-dashboard-external-http -n "$ROOK_CLUSTER_NS" --url)
     BASE_URL="$DASHBOARD_END_POINT"
@@ -92,6 +110,17 @@ show_info() {
 	PROMETHEUS_API_HOST="http://$(kubectl -n "$ROOK_CLUSTER_NS" -o jsonpath='{.status.hostIP}' get pod prometheus-rook-prometheus-0):30900"
     echo "Prometheus Dashboard: "
     echo "   API_HOST: $PROMETHEUS_API_HOST"
+    fi
+    if [ "$monitoring_enabled" = true ]; then
+    S3_ACCESS_KEY=$($KUBECTL -n "$ROOK_CLUSTER_NS" get secret rook-ceph-object-user-my-store-my-user -o jsonpath="{['data']['AccessKey']}" | base64 --decode && echo)
+    S3_SECRET_KEY=$($KUBECTL -n "$ROOK_CLUSTER_NS" get secret rook-ceph-object-user-my-store-my-user -o jsonpath="{['data']['SecretKey']}" | base64 --decode && echo)
+    S3_END_POINT=$($MINIKUBE service rook-ceph-rgw-my-store-external -n "$ROOK_CLUSTER_NS" --url)
+    echo "Obect Gateway S3 Endpoint Dashboard: "
+    echo "   S3 Endpoint: $S3_END_POINT"
+    echo "   AccessKey  : $S3_ACCESS_KEY"
+    echo "   SecretKey  : $S3_SECRET_KEY"
+    echo "Configuring Minio mc client ..."
+    $MC alias set $ROOK_PROFILE_NAME $S3_END_POINT $S3_ACCESS_KEY $S3_SECRET_KEY
     fi
     echo "==========================="
     echo " "
@@ -131,7 +160,6 @@ create_rook_cluster() {
     $KUBECTL apply -f crds.yaml -f common.yaml -f operator.yaml
     $KUBECTL apply -f "$ROOK_CLUSTER_SPEC_FILE" -f toolbox.yaml
     $KUBECTL apply -f dashboard-external-http.yaml
-    $KUBECTL apply -f "$ROOK_OBJECTSTORE_SPEC_FILE"
     CEPHCLUSTER=$($KUBECTL get cephclusters.ceph.rook.io -o jsonpath='{.items[*].metadata.name}' -n "$ROOK_OPERATOR_NS")
 }
 
@@ -182,7 +210,16 @@ enable_monitoring() {
     $KUBECTL apply -f monitoring/exporter-service-monitor.yaml
     $KUBECTL apply -f monitoring/prometheus.yaml
     $KUBECTL apply -f monitoring/prometheus-service.yaml
-    $KUBECTL patch cephclusters.ceph.rook.io -n "$ROOK_CLUSTER_NS" "$CEPHCLUSTER" --type merge --patch-file "$SCRIPT_ROOT/deploy/monitoring/cephcluster-prometheus-patch.yaml"
+    PROMETHEUS_API_HOST="http://$(kubectl -n "$ROOK_CLUSTER_NS" -o jsonpath='{.status.hostIP}' get pod prometheus-rook-prometheus-0):30900"
+    $KUBECTL -n "$ROOK_CLUSTER_NS" exec -it deploy/rook-ceph-tools -- ceph dashboard set-prometheus-api-host "$PROMETHEUS_API_HOST"
+    #$KUBECTL patch cephclusters.ceph.rook.io -n "$ROOK_CLUSTER_NS" "$CEPHCLUSTER" --type merge --patch-file "$SCRIPT_ROOT/deploy/monitoring/cephcluster-prometheus-patch.yaml"
+}
+
+enable_objectstore() {
+    echo "Enabling object store"
+    $KUBECTL apply -f "$ROOK_OBJECTSTORE_SPEC_FILE"
+    $KUBECTL apply -f rgw-external.yaml
+    $KUBECTL apply -f object-user.yaml
 }
 
 show_usage() {
@@ -205,7 +242,7 @@ invocation_error() {
 ####################################################################
 ################# MAIN #############################################
 
-while getopts ":hrmf" opt; do
+while getopts ":hrmfo" opt; do
     case $opt in
 	h)
 	    show_usage
@@ -219,6 +256,9 @@ while getopts ":hrmf" opt; do
 	    ;;
 	f)
 	    force_minikube=true
+	    ;;
+	o)
+	    enable_objectstore=true
 	    ;;
 	\?)
 	    invocation_error "Invalid option: -$OPTARG"
@@ -244,7 +284,8 @@ wait_for_ceph_cluster
 # final tweaks and ceph cluster tuning
 [ "$enable_rook" = true ] && enable_rook_orchestrator
 [ "$enable_monitoring" = true ] && enable_monitoring
-show_info "$enable_monitoring"
+[ "$enable_objectstore" = true ] && enable_objectstore && wait_for_ceph_objectstore
+show_info "$enable_monitoring" "$enable_objectstore"
 
 ####################################################################
 ####################################################################
