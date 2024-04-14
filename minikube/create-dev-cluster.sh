@@ -113,7 +113,7 @@ show_info() {
     echo "Prometheus Dashboard: "
     echo "   API_HOST: $PROMETHEUS_API_HOST"
     fi
-    if [ "$monitoring_enabled" = true ]; then
+    if [ "$objectstore_enabled" = true ]; then
     S3_ACCESS_KEY=$($KUBECTL -n "$ROOK_CLUSTER_NS" get secret rook-ceph-object-user-objectstore-objectuser -o jsonpath="{['data']['AccessKey']}" | base64 --decode && echo)
     S3_SECRET_KEY=$($KUBECTL -n "$ROOK_CLUSTER_NS" get secret rook-ceph-object-user-objectstore-objectuser -o jsonpath="{['data']['SecretKey']}" | base64 --decode && echo)
     S3_END_POINT=$($MINIKUBE service rook-ceph-rgw-objectstore-external -n "$ROOK_CLUSTER_NS" --url)
@@ -149,7 +149,7 @@ setup_minikube_env() {
     minikube_driver="$(get_minikube_driver)"
     echo "Setting up minikube env for profile '$ROOK_PROFILE_NAME' (using $minikube_driver driver)"
     $MINIKUBE delete || error "Error deleting exsiting Minikube instance"
-    $MINIKUBE start --disk-size="$MINIKUBE_DISK_SIZE" --extra-disks="$MINIKUBE_EXTRA_DISKS" --driver "$minikube_driver" -n "$MINIKUBE_NODES" --cpus "$MINIKUBE_CPUS" --memory "$MINIKUBE_MEMORY" || error "Error starting Minikube"
+    $MINIKUBE start --disk-size="$MINIKUBE_DISK_SIZE" --extra-disks="$MINIKUBE_EXTRA_DISKS" --driver "$minikube_driver" -n "$MINIKUBE_NODES" --cpus "$MINIKUBE_CPUS" --memory "$MINIKUBE_MEMORY" --kvm-network='default' --network default || error "Error starting Minikube"
     eval "$($MINIKUBE docker-env)"
 }
 
