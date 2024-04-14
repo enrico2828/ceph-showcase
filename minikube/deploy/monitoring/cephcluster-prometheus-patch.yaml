@@ -1,0 +1,4 @@
+spec:
+  dashboard:
+    prometheusEndpoint: http://rook-prometheus:9090
+    prometheusEndpointSSLVerify: false

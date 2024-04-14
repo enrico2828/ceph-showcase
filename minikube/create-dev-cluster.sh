@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
 
+set -e
+
 DEFAULT_NS="rook-ceph"
 CLUSTER_FILES="common.yaml operator.yaml cluster-test.yaml cluster-on-pvc-minikube.yaml dashboard-external-http.yaml toolbox.yaml"
 MONITORING_FILES="monitoring/prometheus.yaml monitoring/service-monitor.yaml monitoring/exporter-service-monitor.yaml monitoring/prometheus-service.yaml monitoring/rbac.yaml"
@@ -115,8 +117,8 @@ check_minikube_exists() {
 setup_minikube_env() {
     minikube_driver="$(get_minikube_driver)"
     echo "Setting up minikube env for profile '$ROOK_PROFILE_NAME' (using $minikube_driver driver)"
-    $MINIKUBE delete
-    $MINIKUBE start --disk-size="$MINIKUBE_DISK_SIZE" --extra-disks="$MINIKUBE_EXTRA_DISKS" --driver "$minikube_driver" -n "$MINIKUBE_NODES" --cpus "$MINIKUBE_CPUS" --memory "$MINIKUBE_MEMORY"
+    $MINIKUBE delete || error "Error deleting exsiting Minikube instance"
+    $MINIKUBE start --disk-size="$MINIKUBE_DISK_SIZE" --extra-disks="$MINIKUBE_EXTRA_DISKS" --driver "$minikube_driver" -n "$MINIKUBE_NODES" --cpus "$MINIKUBE_CPUS" --memory "$MINIKUBE_MEMORY" || error "Error starting Minikube"
     eval "$($MINIKUBE docker-env)"
 }
 
@@ -130,6 +132,7 @@ create_rook_cluster() {
     $KUBECTL apply -f "$ROOK_CLUSTER_SPEC_FILE" -f toolbox.yaml
     $KUBECTL apply -f dashboard-external-http.yaml
     $KUBECTL apply -f "$ROOK_OBJECTSTORE_SPEC_FILE"
+    CEPHCLUSTER=$($KUBECTL get cephclusters.ceph.rook.io -o jsonpath='{.items[*].metadata.name}' -n "$ROOK_OPERATOR_NS")
 }
 
 change_to_examples_dir() {
@@ -179,8 +182,7 @@ enable_monitoring() {
     $KUBECTL apply -f monitoring/exporter-service-monitor.yaml
     $KUBECTL apply -f monitoring/prometheus.yaml
     $KUBECTL apply -f monitoring/prometheus-service.yaml
-    PROMETHEUS_API_HOST="http://$(kubectl -n "$ROOK_CLUSTER_NS" -o jsonpath='{.status.hostIP}' get pod prometheus-rook-prometheus-0):30900"
-    $KUBECTL -n "$ROOK_CLUSTER_NS" exec -it deploy/rook-ceph-tools -- ceph dashboard set-prometheus-api-host "$PROMETHEUS_API_HOST"
+    $KUBECTL patch cephclusters.ceph.rook.io -n "$ROOK_CLUSTER_NS" "$CEPHCLUSTER" --type merge --patch-file "$SCRIPT_ROOT/deploy/monitoring/cephcluster-prometheus-patch.yaml"
 }
 
 show_usage() {
