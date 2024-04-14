@@ -18,7 +18,9 @@ export ROOK_CLUSTER_NS="${ROOK_CLUSTER_NS:=$DEFAULT_NS}" ## CephCluster namespac
 export ROOK_OPERATOR_NS="${ROOK_OPERATOR_NS:=$DEFAULT_NS}" ## Rook operator namespace (if different from CephCluster namespace)
 export ROOK_EXAMPLES_DIR="${ROOK_EXAMPLES_DIR:="$SCRIPT_ROOT"/../../rook/deploy/examples}" ## Path to Rook examples directory (i.e github.com/rook/rook/deploy/examples)
 export ROOK_CLUSTER_SPEC_FILE="${ROOK_CLUSTER_SPEC_FILE:=cluster-test.yaml}" ## CephCluster manifest file
-export ROOK_OBJECTSTORE_SPEC_FILE="${ROOK_OBJECTSTORE_SPEC_FILE:=object-test.yaml}" ## CephCluster manifest file
+export ROOK_OBJECTSTORE_SPEC_FILE="${ROOK_OBJECTSTORE_SPEC_FILE:=$SCRIPT_ROOT/deploy/objectstore/object-multisite-test.yaml}" ## CephCluster manifest file
+export ROOK_OBJECTUSER_SPEC_FILE="${ROOK_OBJECTUSER_SPEC_FILE:=$SCRIPT_ROOT/deploy/objectstore/object-user.yaml}" ## CephCluster manifest file
+export ROOK_OBJECTSERVICE_SPEC_FILE="${ROOK_OBJECTSERVICE_SPEC_FILE:=$SCRIPT_ROOT/deploy/objectstore/rgw-external.yaml}" ## CephCluster manifest file
 export MC="${MC:=/usr/local/bin/mc}" ## mc binary for configuring S3
 
 init_vars(){
@@ -112,9 +114,9 @@ show_info() {
     echo "   API_HOST: $PROMETHEUS_API_HOST"
     fi
     if [ "$monitoring_enabled" = true ]; then
-    S3_ACCESS_KEY=$($KUBECTL -n "$ROOK_CLUSTER_NS" get secret rook-ceph-object-user-my-store-my-user -o jsonpath="{['data']['AccessKey']}" | base64 --decode && echo)
-    S3_SECRET_KEY=$($KUBECTL -n "$ROOK_CLUSTER_NS" get secret rook-ceph-object-user-my-store-my-user -o jsonpath="{['data']['SecretKey']}" | base64 --decode && echo)
-    S3_END_POINT=$($MINIKUBE service rook-ceph-rgw-my-store-external -n "$ROOK_CLUSTER_NS" --url)
+    S3_ACCESS_KEY=$($KUBECTL -n "$ROOK_CLUSTER_NS" get secret rook-ceph-object-user-objectstore-objectuser -o jsonpath="{['data']['AccessKey']}" | base64 --decode && echo)
+    S3_SECRET_KEY=$($KUBECTL -n "$ROOK_CLUSTER_NS" get secret rook-ceph-object-user-objectstore-objectuser -o jsonpath="{['data']['SecretKey']}" | base64 --decode && echo)
+    S3_END_POINT=$($MINIKUBE service rook-ceph-rgw-objectstore-external -n "$ROOK_CLUSTER_NS" --url)
     echo "Obect Gateway S3 Endpoint Dashboard: "
     echo "   S3 Endpoint: $S3_END_POINT"
     echo "   AccessKey  : $S3_ACCESS_KEY"
@@ -203,13 +205,14 @@ enable_rook_orchestrator() {
 
 enable_monitoring() {
     echo "Enabling monitoring"
-    $KUBECTL create -f https://raw.githubusercontent.com/coreos/prometheus-operator/v0.71.1/bundle.yaml
-    $KUBECTL wait --for=condition=ready pod -l app.kubernetes.io/name=prometheus-operator --timeout=30s
+    $KUBECTL create -f https://raw.githubusercontent.com/coreos/prometheus-operator/v0.73.1/bundle.yaml
+    $KUBECTL wait --for=condition=ready pod -l app.kubernetes.io/name=prometheus-operator --timeout=30s -n default
     $KUBECTL apply -f monitoring/rbac.yaml
     $KUBECTL apply -f monitoring/service-monitor.yaml
     $KUBECTL apply -f monitoring/exporter-service-monitor.yaml
     $KUBECTL apply -f monitoring/prometheus.yaml
     $KUBECTL apply -f monitoring/prometheus-service.yaml
+    $KUBECTL wait --for=condition=ready pod -l app.kubernetes.io/name=prometheus --timeout=180s -n "$ROOK_CLUSTER_NS"
     PROMETHEUS_API_HOST="http://$(kubectl -n "$ROOK_CLUSTER_NS" -o jsonpath='{.status.hostIP}' get pod prometheus-rook-prometheus-0):30900"
     $KUBECTL -n "$ROOK_CLUSTER_NS" exec -it deploy/rook-ceph-tools -- ceph dashboard set-prometheus-api-host "$PROMETHEUS_API_HOST"
     #$KUBECTL patch cephclusters.ceph.rook.io -n "$ROOK_CLUSTER_NS" "$CEPHCLUSTER" --type merge --patch-file "$SCRIPT_ROOT/deploy/monitoring/cephcluster-prometheus-patch.yaml"
@@ -218,8 +221,8 @@ enable_monitoring() {
 enable_objectstore() {
     echo "Enabling object store"
     $KUBECTL apply -f "$ROOK_OBJECTSTORE_SPEC_FILE"
-    $KUBECTL apply -f rgw-external.yaml
-    $KUBECTL apply -f object-user.yaml
+    $KUBECTL apply -f "$ROOK_OBJECTUSER_SPEC_FILE"
+    $KUBECTL apply -f "$ROOK_OBJECTSERVICE_SPEC_FILE"
 }
 
 show_usage() {
