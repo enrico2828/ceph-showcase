@@ -149,7 +149,7 @@ setup_minikube_env() {
     minikube_driver="$(get_minikube_driver)"
     echo "Setting up minikube env for profile '$ROOK_PROFILE_NAME' (using $minikube_driver driver)"
     $MINIKUBE delete || error "Error deleting exsiting Minikube instance"
-    $MINIKUBE start --disk-size="$MINIKUBE_DISK_SIZE" --extra-disks="$MINIKUBE_EXTRA_DISKS" --driver "$minikube_driver" -n "$MINIKUBE_NODES" --cpus "$MINIKUBE_CPUS" --memory "$MINIKUBE_MEMORY" --kvm-network='default' --network default || error "Error starting Minikube"
+    $MINIKUBE start --disk-size="$MINIKUBE_DISK_SIZE" --extra-disks="$MINIKUBE_EXTRA_DISKS" --driver "$minikube_driver" -n "$MINIKUBE_NODES" --cpus "$MINIKUBE_CPUS" --memory "$MINIKUBE_MEMORY"  --network rook || error "Error starting Minikube"
     eval "$($MINIKUBE docker-env)"
 }
 
