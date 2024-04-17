@@ -70,11 +70,14 @@ wait_for_ceph_objectstore() {
 	sleep ${WAIT_CEPH_CLUSTER_RUNNING}
     done
     # wait for objectstore user to be ready
-    while ! $KUBECTL get cephobjectstoreusers.ceph.rook.io -n "$ROOK_CLUSTER_NS" -o jsonpath='{.items[?(@.kind == "CephObjectStoreUser")].status.phase}' | grep -q "Ready"; do
-	echo "Waiting for ceph objectstore user to become ready"
-	sleep ${WAIT_CEPH_CLUSTER_RUNNING}
-    done
-    echo "Ceph objectstore is ready"
+    OBJECTUSER=$($KUBECTL get cephobjectstoreusers.ceph.rook.io -o jsonpath='{.items[0].metadata.name}' -n "$ROOK_CLUSTER_NS")
+    if [ -n "$OBJECTUSER" ]; then
+        while ! $KUBECTL get cephobjectstoreusers.ceph.rook.io -n "$ROOK_CLUSTER_NS" "$OBJECTUSER" -o jsonpath='{.status.phase}' | grep -q "Ready"; do
+        echo "Waiting for ceph objectstore user to become ready"
+        sleep ${WAIT_CEPH_CLUSTER_RUNNING}
+        done
+        echo "Ceph objectstore is ready"
+    fi
 }
 
 get_minikube_driver() {
@@ -114,15 +117,18 @@ show_info() {
     echo "   API_HOST: $PROMETHEUS_API_HOST"
     fi
     if [ "$objectstore_enabled" = true ]; then
-    S3_ACCESS_KEY=$($KUBECTL -n "$ROOK_CLUSTER_NS" get secret rook-ceph-object-user-objectstore-objectuser -o jsonpath="{['data']['AccessKey']}" | base64 --decode && echo)
-    S3_SECRET_KEY=$($KUBECTL -n "$ROOK_CLUSTER_NS" get secret rook-ceph-object-user-objectstore-objectuser -o jsonpath="{['data']['SecretKey']}" | base64 --decode && echo)
+    if [ -n "$OBJECTUSER" ]; then
+        OBJECTUSERSECRET=$($KUBECTL -n "$ROOK_CLUSTER_NS" get cephobjectstoreusers.ceph.rook.io objectuser-a -o jsonpath='{.status.info.secretName}')
+        S3_ACCESS_KEY=$($KUBECTL -n "$ROOK_CLUSTER_NS" get secret "$OBJECTUSERSECRET" -o jsonpath="{['data']['AccessKey']}" | base64 --decode && echo)
+        S3_SECRET_KEY=$($KUBECTL -n "$ROOK_CLUSTER_NS" get secret "$OBJECTUSERSECRET" -o jsonpath="{['data']['SecretKey']}" | base64 --decode && echo)
+    fi
     S3_END_POINT=$($MINIKUBE service rook-ceph-rgw-objectstore-external -n "$ROOK_CLUSTER_NS" --url)
-    echo "Obect Gateway S3 Endpoint Dashboard: "
+    echo "Obect Gateway S3 Endpoint: "
     echo "   S3 Endpoint: $S3_END_POINT"
     echo "   AccessKey  : $S3_ACCESS_KEY"
     echo "   SecretKey  : $S3_SECRET_KEY"
     echo "Configuring Minio mc client ..."
-    $MC alias set $ROOK_PROFILE_NAME $S3_END_POINT $S3_ACCESS_KEY $S3_SECRET_KEY
+    $MC alias set "$ROOK_PROFILE_NAME" "$S3_END_POINT" "$S3_ACCESS_KEY" "$S3_SECRET_KEY"
     fi
     echo "==========================="
     echo " "
@@ -221,8 +227,6 @@ enable_monitoring() {
 enable_objectstore() {
     echo "Enabling object store"
     $KUBECTL apply -f "$ROOK_OBJECTSTORE_SPEC_FILE"
-    $KUBECTL apply -f "$ROOK_OBJECTUSER_SPEC_FILE"
-    $KUBECTL apply -f "$ROOK_OBJECTSERVICE_SPEC_FILE"
 }
 
 show_usage() {
@@ -230,6 +234,9 @@ show_usage() {
     echo "Usage: [ARG=VALUE]... $(basename "$0") [-f] [-r] [-m]"
     echo "  -f     Force cluster creation by deleting minikube profile"
     echo "  -r     Enable rook orchestrator"
+    echo "  -m     Enable monitoring"
+    echo "  -o     Enable object store"
+    echo "  -s     Show cluster information"
     echo "  -m     Enable monitoring"
     echo "  Args:"
     sed -n -E "s/^export (.*)=\".*:=.*\" ## (.*)/    \1 (\\$\1):  \2/p;" "$SCRIPT_ROOT"/"$(basename "$0")" | envsubst
@@ -245,30 +252,34 @@ invocation_error() {
 ####################################################################
 ################# MAIN #############################################
 
-while getopts ":hrmfo" opt; do
+while getopts "hrmfos" opt; do
     case $opt in
-	h)
-	    show_usage
-	    exit 0
-	    ;;
-	r)
-	    enable_rook=true
-	    ;;
-	m)
-	    enable_monitoring=true
-	    ;;
-	f)
-	    force_minikube=true
-	    ;;
-	o)
-	    enable_objectstore=true
-	    ;;
-	\?)
-	    invocation_error "Invalid option: -$OPTARG"
-	    ;;
-	:)
-	    invocation_error "Option -$OPTARG requires an argument."
-	    ;;
+        h)
+            show_usage
+            exit 0
+            ;;
+        r)
+            enable_rook=true
+            ;;
+        m)
+            enable_monitoring=true
+            ;;
+        f)
+            force_minikube=true
+            ;;
+        o)
+            enable_objectstore=true
+            ;;
+        s) 
+            show_info
+            exit 0
+            ;;
+        \?)
+            invocation_error "Invalid option: -$OPTARG"
+            ;;
+        :)
+            invocation_error "Option -$OPTARG requires an argument."
+            ;;
     esac
 done
 

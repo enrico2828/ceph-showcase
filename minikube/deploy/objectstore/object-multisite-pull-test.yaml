@@ -10,8 +10,8 @@ metadata:
 data:
   # TODO: Replace with keys for your cluster
   # these keys should be the base64 encoded versions of the actual keys or copied from the realm's on the other cluster's secret
-  access-key: SXlOM2ZWWk9VMFJXZXoxNlBUaz0=
-  secret-key: ZUVCNGVTcExXeUplVmt4UU96c3FYVlplZURaY01TODVWRkZNWVE9PQ==
+  access-key: UUNOOGNGeG9SVVVrYkhwVUtGZz0=
+  secret-key: T2lZdkpYeGdQamxETURwVmRudGlaR3drTTBSTkp6TkZZeTE5SlE9PQ==
 ---
 apiVersion: ceph.rook.io/v1
 kind: CephObjectRealm
@@ -25,7 +25,7 @@ spec:
   #   pull:
   #     endpoint: http://10.103.133.16:80
   pull:
-    endpoint: "http://192.168.122.211:30028"
+    endpoint: "http://192.168.39.124:30028"
 ---
 apiVersion: ceph.rook.io/v1
 kind: CephObjectZoneGroup
@@ -56,7 +56,7 @@ spec:
       compression_mode: none
   # recommended to set this value if ingress used for exposing rgw endpoints
   customEndpoints:
-  - "http://192.168.122.28:30028"
+  - "http://192.168.39.48:30028"
   # if the pools need to be removed from backend enable following setting
   # preservePoolsOnDelete: false
 ---
@@ -72,4 +72,56 @@ spec:
     instances: 1
   zone:
     name: zone-b
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: rook-ceph-rgw-objectstore-external
+  namespace: rook-ceph # namespace:cluster
+  labels:
+    app: rook-ceph-rgw
+    rook_cluster: rook-ceph # namespace:cluster
+    rook_object_store: objectstore
+spec:
+  ports:
+    - name: rgw
+      port: 80 # service port mentioned in object store crd
+      protocol: TCP
+      targetPort: 8080
+      nodePort: 30028
+  selector:
+    app: rook-ceph-rgw
+    rook_cluster: rook-ceph # namespace:cluster
+    rook_object_store: objectstore
+  sessionAffinity: None
+  type: NodePort
+---
+#################################################################################################################
+# Create an object store user for access to the s3 endpoint.
+#  kubectl create -f object-user.yaml
+#################################################################################################################
 
+apiVersion: ceph.rook.io/v1
+kind: CephObjectStoreUser
+metadata:
+  name: objectuser-b
+  namespace: rook-ceph # namespace:cluster
+spec:
+  store: objectstore
+  displayName: "ObjectStore Default User"
+  # Quotas set on the user
+  # quotas:
+  #   maxBuckets: 100
+  #   maxSize: 10G
+  #   maxObjects: 10000
+  # Additional permissions given to the user
+  # capabilities:
+  #   user: "*"
+  #   bucket: "*"
+  #   metadata: "*"
+  #   usage: "*"
+  #   zone: "*"
+  # If the CephObjectStoreUser is created in a namespace other than the Rook cluster namespace,
+  # specify the namespace where the cluster and object store are found.
+  # "allowUsersInNamespaces" must include this namespace to enable this feature.
+  # clusterNamespace: rook-ceph
