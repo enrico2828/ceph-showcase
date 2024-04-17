@@ -231,12 +231,11 @@ enable_objectstore() {
 
 show_usage() {
     echo ""
-    echo "Usage: [ARG=VALUE]... $(basename "$0") [-f] [-r] [-m]"
+    echo "Usage: [ARG=VALUE]... $(basename "$0") [-f] [-r] [-m] [o]"
     echo "  -f     Force cluster creation by deleting minikube profile"
     echo "  -r     Enable rook orchestrator"
     echo "  -m     Enable monitoring"
     echo "  -o     Enable object store"
-    echo "  -s     Show cluster information"
     echo "  -m     Enable monitoring"
     echo "  Args:"
     sed -n -E "s/^export (.*)=\".*:=.*\" ## (.*)/    \1 (\\$\1):  \2/p;" "$SCRIPT_ROOT"/"$(basename "$0")" | envsubst
@@ -252,7 +251,7 @@ invocation_error() {
 ####################################################################
 ################# MAIN #############################################
 
-while getopts "hrmfos" opt; do
+while getopts "hrmfo" opt; do
     case $opt in
         h)
             show_usage
@@ -269,10 +268,6 @@ while getopts "hrmfos" opt; do
             ;;
         o)
             enable_objectstore=true
-            ;;
-        s) 
-            show_info
-            exit 0
             ;;
         \?)
             invocation_error "Invalid option: -$OPTARG"
