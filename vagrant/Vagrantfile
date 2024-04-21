@@ -6,19 +6,12 @@ IMAGE_NAME = "alvistack/ubuntu-22.04"
 ENV['VAGRANT_DEFAULT_PROVIDER'] = 'libvirt'
 
 Vagrant.configure("2") do |config|
-
-  ##### DEFINE VMS #####
-  config.vm.define "cephadm" do |config|
-  config.vm.hostname = "cephadm"
-  config.vm.box = IMAGE_NAME
-  config.vm.box_check_update = false
-  config.vm.synced_folder ".", "/vagrant", disabled: true
-  config.vm.network "private_network", ip: "192.168.50.10"
-  end
+  # Create 2 ceph clusters
+  config.ssh.insert_key = false
   config.vm.provider :libvirt do |v|
     v.qemu_use_session = false
-    v.memory = 1024
-    v.cpus = 2 
+    v.memory = 8096
+    v.cpus = 4
     v.storage :file, :size => '40G', :bus => 'virtio', :type => 'raw', :discard => 'unmap', :detect_zeroes => 'on', :device => 'vdb', :allow_existing => false
     v.storage :file, :size => '40G', :bus => 'virtio', :type => 'raw', :discard => 'unmap', :detect_zeroes => 'on', :device => 'vdc', :allow_existing => false
     v.storage :file, :size => '40G', :bus => 'virtio', :type => 'raw', :discard => 'unmap', :detect_zeroes => 'on', :device => 'vdd', :allow_existing => false
@@ -27,5 +20,16 @@ Vagrant.configure("2") do |config|
     v.storage :file, :size => '40G', :bus => 'virtio', :type => 'raw', :discard => 'unmap', :detect_zeroes => 'on', :device => 'vdg', :allow_existing => false
     v.storage :file, :size => '40G', :bus => 'virtio', :type => 'raw', :discard => 'unmap', :detect_zeroes => 'on', :device => 'vdh', :allow_existing => false
   end
-  config.vm.provision :shell, path: "bootstrap.sh"
+
+  (1..2).each do |i|
+    ##### DEFINE VMS #####
+    config.vm.define "cephadm#{i}" do |config|
+      config.vm.hostname = "cephadm#{i}"
+      config.vm.box = IMAGE_NAME
+      config.vm.box_check_update = false
+      config.vm.synced_folder ".", "/vagrant", disabled: true
+      config.vm.network "private_network", ip: "192.168.50.1#{i}"
+      config.vm.provision :shell, path: "bootstrap.sh", args: "192.168.50.1#{i}"
+    end
+  end
 end
