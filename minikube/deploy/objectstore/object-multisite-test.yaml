@@ -37,7 +37,7 @@ spec:
       compression_mode: none
   # recommended to set this value if ingress used for exposing rgw endpoints
   customEndpoints:
-  - "http://192.168.39.124:30028"
+  - "http://192.168.39.120:30028"
   # if the pools need to be removed from backend enable following setting
   # preservePoolsOnDelete: false
 ---

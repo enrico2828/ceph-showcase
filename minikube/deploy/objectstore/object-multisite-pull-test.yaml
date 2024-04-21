@@ -10,8 +10,8 @@ metadata:
 data:
   # TODO: Replace with keys for your cluster
   # these keys should be the base64 encoded versions of the actual keys or copied from the realm's on the other cluster's secret
-  access-key: UUNOOGNGeG9SVVVrYkhwVUtGZz0=
-  secret-key: T2lZdkpYeGdQamxETURwVmRudGlaR3drTTBSTkp6TkZZeTE5SlE9PQ==
+  access-key: ZURGRlVtWTBRVnBsV1dGcGZuRT0=
+  secret-key: UzE4cWNsMHdMMkZGT2pZa2RDVThYRWhMVTJNL1lFdzFUVXd0VEE9PQ==
 ---
 apiVersion: ceph.rook.io/v1
 kind: CephObjectRealm
@@ -25,7 +25,7 @@ spec:
   #   pull:
   #     endpoint: http://10.103.133.16:80
   pull:
-    endpoint: "http://192.168.39.124:30028"
+    endpoint: "http://192.168.39.120:30028"
 ---
 apiVersion: ceph.rook.io/v1
 kind: CephObjectZoneGroup
@@ -38,7 +38,7 @@ spec:
 apiVersion: ceph.rook.io/v1
 kind: CephObjectZone
 metadata:
-  name: zone-b
+  name: zone-c
   namespace: rook-ceph # namespace:cluster
 spec:
   zoneGroup: zonegroup-a
@@ -56,14 +56,14 @@ spec:
       compression_mode: none
   # recommended to set this value if ingress used for exposing rgw endpoints
   customEndpoints:
-  - "http://192.168.39.48:30028"
+  - "http://192.168.39.155:30028"
   # if the pools need to be removed from backend enable following setting
   # preservePoolsOnDelete: false
 ---
 apiVersion: ceph.rook.io/v1
 kind: CephObjectStore
 metadata:
-  name: objectstore
+  name: objectstore2
   namespace: rook-ceph # namespace:cluster
 spec:
   gateway:
@@ -71,7 +71,7 @@ spec:
     # securePort: 443
     instances: 1
   zone:
-    name: zone-b
+    name: zone-c
 ---
 apiVersion: v1
 kind: Service
@@ -81,7 +81,7 @@ metadata:
   labels:
     app: rook-ceph-rgw
     rook_cluster: rook-ceph # namespace:cluster
-    rook_object_store: objectstore
+    rook_object_store: objectstore2
 spec:
   ports:
     - name: rgw
@@ -92,7 +92,7 @@ spec:
   selector:
     app: rook-ceph-rgw
     rook_cluster: rook-ceph # namespace:cluster
-    rook_object_store: objectstore
+    rook_object_store: objectstore2
   sessionAffinity: None
   type: NodePort
 ---
@@ -104,10 +104,10 @@ spec:
 apiVersion: ceph.rook.io/v1
 kind: CephObjectStoreUser
 metadata:
-  name: objectuser-b
+  name: objectuser-c
   namespace: rook-ceph # namespace:cluster
 spec:
-  store: objectstore
+  store: objectstore2
   displayName: "ObjectStore Default User"
   # Quotas set on the user
   # quotas:
